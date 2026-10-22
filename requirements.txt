@@ -1,0 +1,6 @@
+# Use Python 3.10 or 3.11 for the parser libraries (3.13 may not have wheels for libscca).
+python-evtx
+python-registry
+LnkParse3
+libscca-python
+pandas

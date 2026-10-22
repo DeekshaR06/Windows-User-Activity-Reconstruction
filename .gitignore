@@ -1,0 +1,11 @@
+# evidence is large and must never be committed
+evidence/*
+!evidence/.gitkeep
+output/
+__pycache__/
+*.pyc
+*.raw
+*.E01
+*.vdi
+*.zip
+.venv/

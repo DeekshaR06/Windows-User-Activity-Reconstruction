@@ -1,0 +1,17 @@
+step,time_ist,time_utc,action,expected_event_type,expected_source,notes
+S01a,,,Created the local user "ravi",ACCOUNT_CREATED,EventLog,
+S01b,,,Logged on as ravi,USER_LOGON,EventLog,
+S02a,,,Opened Notepad to create the 3 text files,PROGRAM_EXECUTED,Prefetch,
+S02b,,,Re-opened salary_report.txt / client_list.csv / project_notes.txt,FILE_OPENED,LNK,3 files
+S03a,,,Visited websites and made one search in Edge,URL_VISITED,Browser,
+S03b,,,Downloaded the 7-Zip installer,FILE_DOWNLOADED,Browser,
+S04,,,Ran the downloaded installer,PROGRAM_EXECUTED,Prefetch,
+S05,,,Plugged in the USB pen drive,USB_CONNECTED,USB,note drive brand
+S06,,,Opened client_list.csv from the pen drive,FILE_OPENED,LNK,path starts with E: (removable)
+S07,,,Safely ejected the pen drive,USB_REMOVED,USB,may not be recorded
+S08,,,Deleted salary_report.txt and client_list.csv,FILE_DELETED,RecycleBin,2 files
+S09,,,Ran Calculator / Paint / Command Prompt,PROGRAM_EXECUTED,Prefetch,3 programs
+S10,,,Cleared the Application log,LOG_CLEARED,EventLog,
+S11a,,,Logged off ravi,USER_LOGOFF,EventLog,
+S11b,,,Shut down the computer,SYSTEM_SHUTDOWN,EventLog,
+S11c,,,Started the computer again,SYSTEM_START,EventLog,

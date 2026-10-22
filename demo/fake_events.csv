@@ -1,0 +1,20 @@
+﻿timestamp_utc,timestamp_ist,time_meaning,source,event_type,user,summary,details,evidence_file
+2026-10-23T04:31:30Z,2026-10-23 10:01:30,created,EventLog,ACCOUNT_CREATED,ravi,Local account ravi was created,"{""event_id"": 4720}",Logs/Security.evtx
+2026-10-23T04:32:11Z,2026-10-23 10:02:11,logon,EventLog,USER_LOGON,ravi,User ravi logged on (interactive),"{""event_id"": 4624, ""logon_type"": 2}",Logs/Security.evtx
+2026-10-23T04:35:40Z,2026-10-23 10:05:40,last_run,Prefetch,PROGRAM_EXECUTED,ravi,NOTEPAD.EXE was run (run count 4),"{""run_count"": 4}",Prefetch/NOTEPAD.EXE-D8414F97.pf
+2026-10-23T04:37:12Z,2026-10-23 10:07:12,last_opened,LNK,FILE_OPENED,ravi,Opened salary_report.txt from C:\Users\ravi\Documents,"{""drive_type"": ""fixed""}",Recent/salary_report.txt.lnk
+2026-10-23T04:37:50Z,2026-10-23 10:07:50,last_opened,LNK,FILE_OPENED,ravi,Opened client_list.csv from C:\Users\ravi\Documents,"{""drive_type"": ""fixed""}",Recent/client_list.csv.lnk
+2026-10-23T04:38:30Z,2026-10-23 10:08:30,last_opened,LNK,FILE_OPENED,ravi,Opened project_notes.txt from C:\Users\ravi\Documents,"{""drive_type"": ""fixed""}",Recent/project_notes.txt.lnk
+2026-10-23T04:44:05Z,2026-10-23 10:14:05,visited,Browser,URL_VISITED,ravi,Visited https://www.7-zip.org/ (7-Zip),"{""visit_count"": 1}",Browser/History
+2026-10-23T04:44:40Z,2026-10-23 10:14:40,downloaded,Browser,FILE_DOWNLOADED,ravi,Downloaded 7z-setup.exe to C:\Users\ravi\Downloads,"{""size"": 1500000}",Browser/History
+2026-10-23T04:46:05Z,2026-10-23 10:16:05,last_run,Prefetch,PROGRAM_EXECUTED,ravi,7Z-SETUP.EXE was run from Downloads,"{""run_count"": 1}",Prefetch/7Z-SETUP.EXE-1A2B3C4D.pf
+2026-10-23T05:01:22Z,2026-10-23 10:31:22,connected,USB,USB_CONNECTED,ravi,USB device SanDisk Cruzer (serial 4C53000123) connected,"{""serial"": ""4C53000123""}",Registry/SYSTEM
+2026-10-23T05:03:50Z,2026-10-23 10:33:50,last_opened,LNK,FILE_OPENED,ravi,Opened client_list.csv from drive E: (removable),"{""drive_type"": ""removable""}",Recent/client_list.csv.lnk
+2026-10-23T05:06:10Z,2026-10-23 10:36:10,removed,USB,USB_REMOVED,ravi,USB device SanDisk Cruzer removed,"{""serial"": ""4C53000123""}",Registry/SYSTEM
+2026-10-23T05:11:09Z,2026-10-23 10:41:09,deleted,RecycleBin,FILE_DELETED,ravi,Deleted C:\Users\ravi\Documents\salary_report.txt,"{""size"": 2048}",RecycleBin/$IA1B2C3.txt
+2026-10-23T05:11:30Z,2026-10-23 10:41:30,deleted,RecycleBin,FILE_DELETED,ravi,Deleted C:\Users\ravi\Documents\client_list.csv,"{""size"": 8192}",RecycleBin/$ID4E5F6.csv
+2026-10-23T05:13:00Z,2026-10-23 10:43:00,last_run,Prefetch,PROGRAM_EXECUTED,ravi,CALC.EXE was run,"{""run_count"": 1}",Prefetch/CALC.EXE-0F1E2D3C.pf
+2026-10-23T05:14:30Z,2026-10-23 10:44:30,cleared,EventLog,LOG_CLEARED,ravi,Application log was cleared,"{""event_id"": 104}",Logs/System.evtx
+2026-10-23T05:20:00Z,2026-10-23 10:50:00,logoff,EventLog,USER_LOGOFF,ravi,User ravi logged off,"{""event_id"": 4647}",Logs/Security.evtx
+2026-10-23T05:21:10Z,2026-10-23 10:51:10,shutdown,EventLog,SYSTEM_SHUTDOWN,ravi,Windows shut down,"{""event_id"": 6006}",Logs/System.evtx
+2026-10-23T04:35:40Z,2026-10-23 10:05:40,last_run,Prefetch,PROGRAM_EXECUTED,ravi,NOTEPAD.EXE was run (run count 4),"{""run_count"": 4}",Prefetch/NOTEPAD.EXE-D8414F97.pf
