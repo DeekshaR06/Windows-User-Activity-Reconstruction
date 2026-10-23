@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from typing import List, Tuple
 
-from analysis import rules, sessions
+from analysis import evidence_check, rules, sessions
 from core import timeline
 from core.schema import Event
 
@@ -77,6 +77,7 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(levelname)s %(name)s: %(message)s")
 
+    evidence_report = []
     if args.demo:
         if not os.path.exists(DEMO_FILE):
             log.error("demo file not found: %s", DEMO_FILE)
@@ -88,6 +89,7 @@ def main(argv=None) -> int:
             log.error("evidence folder not found: %s", args.evidence)
             return 2
         raw, status = run_parsers(args.evidence)
+        evidence_report = evidence_check.report_lines(evidence_check.check(args.evidence))
 
     events, stats = timeline.build(raw)
     for problem in stats["invalid"]:
@@ -122,6 +124,11 @@ def main(argv=None) -> int:
         html_path = None
 
     print("\n=== Summary ===")
+    if evidence_report:
+        print("  Evidence folders (%s):" % args.evidence)
+        for line in evidence_report:
+            print(line)
+        print()
     for label, count, note in status:
         print("  %-12s %5d events   %s" % (label, count, note))
     print("  read %d | invalid %d | duplicates removed %d | written %d"
