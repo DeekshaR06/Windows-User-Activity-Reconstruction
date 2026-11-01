@@ -6,8 +6,9 @@ Creates URL_VISITED events from visits and FILE_DOWNLOADED events from downloads
 from __future__ import annotations
 import logging
 import os
+import re
 import sqlite3
-from typing import List
+from typing import List, Optional
 
 from core.schema import Event
 from core import timeutil
@@ -16,12 +17,23 @@ log = logging.getLogger(__name__)
 SOURCE = "Browser"
 FOLDER = "Browser"
 
+
+def _extract_user(path_or_url: str) -> str:
+    if not path_or_url:
+        return ""
+    m = re.search(r"[C|c]:[\\/]Users[\\/]([^\\/]+)[\\/]", path_or_url)
+    if m:
+        return m.group(1)
+    return ""
+
+
 def _tables(conn):
     return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
+
 def _columns(conn, table):
-    # table is selected only from a fixed list of known schema names.
     return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
 
 def _get(row, *names, default=None):
     for name in names:
@@ -33,18 +45,20 @@ def _get(row, *names, default=None):
             pass
     return default
 
-def _add(events, timestamp, meaning, event_type, summary, details, evidence_file):
+
+def _add(events, timestamp, meaning, event_type, user, summary, details, evidence_file):
     iso = timeutil.to_iso(timestamp)
     if not iso:
         return
     events.append(Event(timestamp_utc=iso, time_meaning=meaning, source=SOURCE,
-                        event_type=event_type, user="", summary=summary,
+                        event_type=event_type, user=user, summary=summary,
                         details=details, evidence_file=evidence_file))
+
 
 def _parse_history(path: str, evidence_dir: str) -> List[Event]:
     events: List[Event] = []
     relpath = os.path.relpath(path, evidence_dir).replace("\\", "/")
-    uri = "file:" + os.path.abspath(path).replace("\\", "/") + "?mode=ro"
+    uri = "file:" + os.path.abspath(path).replace("\\", "/") + "?mode=ro&immutable=1"
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True)
@@ -67,19 +81,18 @@ def _parse_history(path: str, evidence_dir: str) -> List[Event]:
                     if not dt or not row["url"]:
                         continue
                     title = row["title"] or ""
-                    summary = f"Visited {row['url']}" + (f" — {title}" if title else "")
-                    _add(events, dt, "visit_time", "URL_VISITED", summary,
-                         {"url": row["url"], "title": title, "visit_id": row["visit_id"]},
+                    url_val = row["url"]
+                    user = _extract_user(url_val)
+                    summary = f"Visited {url_val}" + (f" — {title}" if title else "")
+                    _add(events, dt, "visit_time", "URL_VISITED", user, summary,
+                         {"url": url_val, "title": title, "visit_id": row["visit_id"]},
                          relpath)
             else:
                 log.warning("Browser: unexpected urls/visits schema in %s", path)
 
         if "downloads" in tables:
             cols = _columns(conn, "downloads")
-            start_col = "start_time" if "start_time" in cols else ("start_time" if "start_time" in cols else None)
-            target_col = "target_path" if "target_path" in cols else None
-            url_col = "tab_url" if "tab_url" in cols else None
-            source_col = "site_url" if "site_url" in cols else None
+            start_col = "start_time" if "start_time" in cols else None
             select_cols = [c for c in ("id", "guid", "current_path", "target_path", "tab_url",
                                         "site_url", "start_time", "end_time", "received_bytes",
                                         "total_bytes", "state", "mime_type") if c in cols]
@@ -93,8 +106,9 @@ def _parse_history(path: str, evidence_dir: str) -> List[Event]:
                     tab_url = _get(row, "tab_url", default="") or ""
                     site_url = _get(row, "site_url", default="") or ""
                     filename = os.path.basename(str(target)) if target else "download"
+                    user = _extract_user(str(target))
                     details = {key: row[key] for key in row.keys()}
-                    _add(events, dt, "download_start_time", "FILE_DOWNLOADED",
+                    _add(events, dt, "download_start_time", "FILE_DOWNLOADED", user,
                          f"Downloaded {filename}" + (f" from {site_url or tab_url}" if (site_url or tab_url) else ""),
                          details, relpath)
         if not tables.intersection({"urls", "visits", "downloads"}):
@@ -106,13 +120,13 @@ def _parse_history(path: str, evidence_dir: str) -> List[Event]:
             conn.close()
     return events
 
+
 def parse(evidence_dir: str) -> List[Event]:
     folder = os.path.join(evidence_dir, FOLDER)
     if not os.path.isdir(folder):
         log.warning("%s: folder not found: %s", SOURCE, folder)
         return []
     events: List[Event] = []
-    # The project layout specifies an exported Edge file named "History".
     for root, _, files in os.walk(folder):
         for name in files:
             if name.lower() == "history" or name.lower() == "history.db":
