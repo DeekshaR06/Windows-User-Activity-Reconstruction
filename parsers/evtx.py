@@ -13,7 +13,7 @@ import ntpath
 import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from core.timeutil import iso_text_to_utc, to_iso
+
 from Evtx.Evtx import Evtx
 
 from core.schema import Event
@@ -35,7 +35,14 @@ LOG_FILES = {"security.evtx": "security", "system.evtx": "system"}
 
 # ----------------------------------------------------------------- helpers
 def _iso(stamp: str) -> str:
-    return to_iso(iso_text_to_utc(stamp))
+    """'2026-10-22 04:35:10.123456' or '2026-10-22T04:35:10.1234567Z' -> '2026-10-22T04:35:10Z' (UTC)."""
+    s = stamp.strip().replace(" ", "T").rstrip("Z")
+    if "." in s:
+        head, frac = s.split(".", 1)
+        frac = "".join(c for c in frac if c.isdigit())[:6].ljust(6, "0")
+        s = f"{head}.{frac}"
+    dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _text(el) -> str:
@@ -107,7 +114,8 @@ def _event_from_xml(xml_text: str, log_name: str, rel_file: str):
             if ltype not in LOGON_TYPES or _is_noise_user(user, dom):
                 return None
             extra = {"logon_type": ltype, "logon_type_name": LOGON_TYPES[ltype],
-                     "domain": dom, "logon_id": d.get("TargetLogonId", "")}
+                     "domain": dom, "logon_id": d.get("TargetLogonId", ""),
+                     "linked_logon_id": d.get("TargetLinkedLogonId", "")}
             if eid == 4624:
                 return make("USER_LOGON", "logon", user,
                             f"User {user} logged on ({LOGON_TYPES[ltype].lower()})", extra)
@@ -124,7 +132,8 @@ def _event_from_xml(xml_text: str, log_name: str, rel_file: str):
             new_user, by = d.get("TargetUserName", ""), d.get("SubjectUserName", "")
             return make("ACCOUNT_CREATED", "created", new_user,
                         f"Local user {new_user} was created by {by}",
-                        {"created_by": by, "new_user_sid": d.get("TargetSid", "")})
+                        {"created_by": by, "new_user_sid": d.get("TargetSid", ""),
+                         "created_by_machine": by.endswith("$")})
 
         if eid == 4688:
             user = d.get("SubjectUserName", "")
@@ -153,6 +162,24 @@ def _event_from_xml(xml_text: str, log_name: str, rel_file: str):
             return make("SYSTEM_SHUTDOWN", "stopped", "", "Windows shut down (Event Log service stopped)")
 
     return None
+
+
+# ---------------------------------------------- linked logon pairs (Win 10/11)
+NULL_LOGON_ID = "0x0000000000000000"
+
+
+def _drop_linked_logons(events: list) -> list:
+    """Windows 10/11 writes TWO 4624 records for one admin logon (a limited and an elevated token,
+    microseconds apart, each pointing at the other with TargetLinkedLogonId). Keep the first only."""
+    seen, out = set(), []
+    for e in events:
+        if e.event_type == "USER_LOGON":
+            linked = e.details.get("linked_logon_id", "")
+            if linked and linked != NULL_LOGON_ID and linked in seen:
+                continue
+            seen.add(e.details.get("logon_id", ""))
+        out.append(e)
+    return out
 
 
 # ------------------------------------------------------------- public API
@@ -188,12 +215,40 @@ def parse(evidence_dir: str) -> list:
     if not found_any:
         log.warning("No Security.evtx / System.evtx found under %s", evidence_dir)
     events.sort(key=lambda e: e.timestamp_utc)
-    return events
+    return _drop_linked_logons(events)
 
 
-if __name__ == "__main__":  # quick manual check:  python -m parsers.evtx evidence/export
-    import sys
+def main(argv=None) -> int:
+    """Command line use:  python -m parsers.evtx evidence/export --csv evtx_events.csv"""
+    import argparse
+    import csv
+    import json
 
-    logging.basicConfig(level=logging.INFO)
-    for e in parse(sys.argv[1]):
+    ap = argparse.ArgumentParser(
+        prog="python -m parsers.evtx",
+        description="Parse Security.evtx and System.evtx from an exported evidence folder.",
+    )
+    ap.add_argument("evidence_dir", help="folder with the exported evidence (searched recursively)")
+    ap.add_argument("--csv", metavar="FILE", help="also save the events to this CSV file")
+    ap.add_argument("-v", "--verbose", action="store_true", help="show parser progress and warnings")
+    args = ap.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    events = parse(args.evidence_dir)
+    for e in events:
         print(e.timestamp_utc, e.event_type, e.user, "|", e.summary)
+    print(f"{len(events)} events")
+
+    if args.csv:
+        with open(args.csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["timestamp_utc", "time_meaning", "source", "event_type", "user",
+                        "summary", "details", "evidence_file"])
+            for e in events:
+                w.writerow([e.timestamp_utc, e.time_meaning, e.source, e.event_type, e.user,
+                            e.summary, json.dumps(e.details, ensure_ascii=False), e.evidence_file])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -20,18 +20,25 @@ import json
 import logging
 import ntpath
 import os
+import re
 import struct
 from datetime import datetime, timedelta, timezone
-from core.timeutil import filetime_to_utc, to_iso
+
 from core.schema import Event
 
 log = logging.getLogger(__name__)
 
 EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
 
+# Real Recycle Bin info files are "$I" + 6 characters + the original extension, e.g. $IF4VD8O.txt.
+# This skips "$I30", an NTFS index file that FTK Imager exports into almost every folder.
+I_FILE_RE = re.compile(r"^\$I[A-Za-z0-9]{6}(\.[^\\/]*)?$", re.IGNORECASE)
+
 
 def _filetime_to_iso(ft: int) -> str:
-    return to_iso(filetime_to_utc(ft))
+    # TODO: replace with the shared converter in core/timeutil.py once Member 5 pushes it
+    dt = EPOCH + timedelta(microseconds=ft // 10)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def parse_i_bytes(data: bytes):
@@ -73,7 +80,7 @@ def parse(evidence_dir: str) -> list:
     sid_map = _load_sid_map(evidence_dir)
     for root, _dirs, files in os.walk(evidence_dir):
         for name in files:
-            if not name.upper().startswith("$I"):
+            if not I_FILE_RE.match(name):
                 continue
             path = os.path.join(root, name)
             rel = os.path.relpath(path, evidence_dir).replace("\\", "/")
@@ -107,9 +114,37 @@ def parse(evidence_dir: str) -> list:
     return events
 
 
-if __name__ == "__main__":  # python -m parsers.recyclebin evidence/export
-    import sys
+def main(argv=None) -> int:
+    """Command line use:  python -m parsers.recyclebin evidence/export --csv deleted_files.csv"""
+    import argparse
+    import csv
 
-    logging.basicConfig(level=logging.INFO)
-    for e in parse(sys.argv[1]):
-        print(e.timestamp_utc, e.user, "|", e.summary, e.details["size_bytes"])
+    ap = argparse.ArgumentParser(
+        prog="python -m parsers.recyclebin",
+        description="Parse Recycle Bin $I files from an exported evidence folder.",
+    )
+    ap.add_argument("evidence_dir", help="folder with the exported evidence (searched recursively)")
+    ap.add_argument("--csv", metavar="FILE", help="also save the events to this CSV file")
+    ap.add_argument("-v", "--verbose", action="store_true", help="show parser warnings")
+    args = ap.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
+    events = parse(args.evidence_dir)
+    for e in events:
+        print(e.timestamp_utc, e.user, "|", e.summary, f"({e.details['size_bytes']} bytes)")
+    print(f"{len(events)} deleted files")
+
+    if args.csv:
+        with open(args.csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["deleted_utc", "user", "original_path", "size_bytes", "i_version",
+                        "r_file_present", "evidence_file"])
+            for e in events:
+                d = e.details
+                w.writerow([e.timestamp_utc, e.user, d["original_path"], d["size_bytes"],
+                            d["i_version"], d["r_file_present"], e.evidence_file])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
