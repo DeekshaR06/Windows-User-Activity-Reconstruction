@@ -13,11 +13,12 @@ from core.timeutil import filetime_to_utc, to_iso
 log = logging.getLogger(__name__)
 
 SOURCE = "Prefetch"
+FOLDER = "Prefetch"
 
 
-def _find_pf_files(evidence_dir):
+def _find_pf_files(folder):
     found = []
-    for root, _dirs, files in os.walk(evidence_dir):
+    for root, _dirs, files in os.walk(folder):
         for name in files:
             if name.lower().endswith(".pf"):
                 found.append(os.path.join(root, name))
@@ -25,9 +26,9 @@ def _find_pf_files(evidence_dir):
 
 
 def _rel(evidence_dir, path):
-    """Path shown as proof, e.g. export/Prefetch/NOTEPAD.EXE-D8414F97.pf"""
-    base = os.path.basename(os.path.normpath(evidence_dir))
-    return os.path.join(base, os.path.relpath(path, evidence_dir)).replace("\\", "/")
+    """Path shown as proof, e.g. Prefetch/NOTEPAD.EXE-D8414F97.pf"""
+    folder = os.path.join(evidence_dir, FOLDER)
+    return (FOLDER + "/" + os.path.relpath(path, folder)).replace("\\", "/")
 
 
 def _full_exe_path(scca_file, exe_name):
@@ -95,9 +96,18 @@ def parse(evidence_dir: str) -> list:
         log.warning("Prefetch: libscca-python (pyscca) is not installed; skipping")
         return []
 
+    folder = os.path.join(evidence_dir, FOLDER)
+    if not os.path.isdir(folder):
+        log.warning("%s: folder not found: %s", SOURCE, folder)
+        return []
+
     events = []
-    for path in _find_pf_files(evidence_dir):
+    for path in _find_pf_files(folder):
         try:
+            if os.path.getsize(path) == 0:
+                log.warning("Prefetch: %s is empty (0 bytes), probably not copied "
+                            "properly at export; skipped", _rel(evidence_dir, path))
+                continue
             events.extend(_parse_one(path, evidence_dir))
         except Exception as exc:  # noqa: BLE001 - contract: never crash on a bad file
             log.warning("Prefetch: could not parse %s (%s)", path, exc)
