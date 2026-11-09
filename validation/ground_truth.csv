@@ -1,0 +1,18 @@
+﻿step,time_ist,time_utc,action,expected_event_type,expected_source,notes
+S01a,,,Created the local user ravi (already existed from run 1),ACCOUNT_CREATED,EventLog,"NOT SCORED: net user said account already exists; created in run 1, time not recorded"
+S01b,2026-11-01 13:52:00,2026-11-01 08:22:00,Logged on as ravi (desktop appeared 1:52 PM),USER_LOGON,EventLog,time is when the desktop appeared; logon event is slightly earlier
+S02a,2026-11-01 13:54:00,2026-11-01 08:24:00,Opened Notepad for the first time,PROGRAM_EXECUTED,Prefetch,Notepad also ran in run 1 and many times after; older run times may be dropped by Prefetch
+S02b,2026-11-01 13:59:00,2026-11-01 08:29:00,Re-opened the saved files from File Explorer (first double-click),FILE_OPENED,LNK,3 files; time is the first re-open
+S03a,2026-11-01 14:02:00,2026-11-01 08:32:00,Pressed Enter on the Edge search,URL_VISITED,Browser,also visited 3-4 sites just before
+S03b,2026-11-01 14:03:00,2026-11-01 08:33:00,Clicked the 7-Zip download link,FILE_DOWNLOADED,Browser,
+S04,2026-11-01 14:04:00,2026-11-01 08:34:00,Installed 7-Zip (clicked Install),PROGRAM_EXECUTED,Prefetch,installer .exe from Downloads
+S05,2026-11-01 14:07:00,2026-11-01 08:37:00,"Ticked the pen drive in Devices > USB (drive F:, brand Advance)",USB_CONNECTED,USB,"drive was first connected in run 1; setupapi.dev.log has no new entry; only the registry last-arrival time is new, so a No here is expected if the parser reports first install only"
+S06,2026-11-01 14:11:00,2026-11-01 08:41:00,Opened client_list.csv from the pen drive,FILE_OPENED,LNK,path starts with F: (removable)
+S07,2026-11-01 14:12:00,2026-11-01 08:42:00,Ejected the pen drive,USB_REMOVED,USB,may not be recorded
+S08,2026-11-01 14:13:00,2026-11-01 08:43:00,Deleted salary_report.txt and client_list.csv,FILE_DELETED,RecycleBin,2 files; run 1 left 2 older $I files too
+S09,2026-11-01 14:14:00,2026-11-01 08:44:00,Opened Paint (Calculator and Command Prompt around the same time),PROGRAM_EXECUTED,Prefetch,only Paint time was written down
+S10,2026-11-01 14:15:00,2026-11-01 08:45:00,Cleared the Application log (wevtutil cl Application),LOG_CLEARED,EventLog,Event 104 in the System log
+S11a,2026-11-01 14:17:00,2026-11-01 08:47:00,Signed out of ravi,USER_LOGOFF,EventLog,
+S11b,2026-11-01 14:17:00,2026-11-01 08:47:00,Clicked Restart (shutdown for the restart),SYSTEM_SHUTDOWN,EventLog,restart time written down as 2:17 PM
+S11c,,,Computer started again after the restart,SYSTEM_START,EventLog,time not written down; not scored
+S11d,2026-11-01 14:18:00,2026-11-01 08:48:00,Final shut down from the Start menu,SYSTEM_SHUTDOWN,EventLog,VM fully off at 2:19 PM
