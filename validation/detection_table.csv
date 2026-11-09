@@ -1,0 +1,18 @@
+﻿step,action,expected_source,expected_event_type,found_yes_no,time_in_timeline_ist,time_difference_seconds,notes
+S01a,Created the local user ravi (already existed from run 1),EventLog,ACCOUNT_CREATED,,,,not checked: no valid time_ist in the answer key (format 2026-10-23 10:31:22)
+S01b,Logged on as ravi (desktop appeared 1:52 PM),EventLog,USER_LOGON,Yes,2026-11-01 13:52:29,29,matched: User ravi logged on (interactive)
+S02a,Opened Notepad for the first time,Prefetch,PROGRAM_EXECUTED,Yes,2026-11-01 13:54:01,1,matched: TASKHOSTW.EXE was run (run count 41); 66 more matching event(s) within the window
+S02b,Re-opened the saved files from File Explorer (first double-click),LNK,FILE_OPENED,Yes,2026-11-01 13:58:36,-24,matched: project_notes.txt opened from C:\Users\ravi\Documents\project_notes.txt
+S03a,Pressed Enter on the Edge search,Browser,URL_VISITED,Yes,2026-11-01 14:02:03,3,matched: Visited http://www.python.org/ — Welcome to Python.org; 10 more matching event(s) within the window
+S03b,Clicked the 7-Zip download link,Browser,FILE_DOWNLOADED,Yes,2026-11-01 14:03:09,9,matched: Downloaded 7z2605-x64 (1).exe from https://7-zip.org/
+S04,Installed 7-Zip (clicked Install),Prefetch,PROGRAM_EXECUTED,Yes,2026-11-01 14:03:58,-2,matched: 7Z2605-X64 (1).EXE was run (run count 1); 12 more matching event(s) within the window
+S05,"Ticked the pen drive in Devices > USB (drive F:, brand Advance)",USB,USB_CONNECTED,Yes,2026-11-01 14:07:16,16,"matched: USB disk connected: VendorCo ProductCode (serial 6255861094384049347), 4.0 GB"
+S06,Opened client_list.csv from the pen drive,LNK,FILE_OPENED,Yes,2026-11-01 14:11:45,45,matched: F:\ opened [REMOVABLE DRIVE]; 1 more matching event(s) within the window
+S07,Ejected the pen drive,USB,USB_REMOVED,Yes,2026-11-01 14:12:34,34,matched: USB disk removed: VendorCo ProductCode (serial 6255861094384049347)
+S08,Deleted salary_report.txt and client_list.csv,RecycleBin,FILE_DELETED,Yes,2026-11-01 14:13:22,22,matched: client_list.csv deleted from C:\Users\ravi\Documents; 1 more matching event(s) within the window
+S09,Opened Paint (Calculator and Command Prompt around the same time),Prefetch,PROGRAM_EXECUTED,Yes,2026-11-01 14:14:06,6,matched: SVCHOST.EXE was run (run count 8); 21 more matching event(s) within the window
+S10,Cleared the Application log (wevtutil cl Application),EventLog,LOG_CLEARED,Yes,2026-11-01 14:15:57,57,matched: The Application log was cleared by ravi
+S11a,Signed out of ravi,EventLog,USER_LOGOFF,Yes,2026-11-01 14:17:15,15,matched: User ravi logged off (user-initiated); 1 more matching event(s) within the window
+S11b,Clicked Restart (shutdown for the restart),EventLog,SYSTEM_SHUTDOWN,Yes,2026-11-01 14:17:52,52,matched: Windows shut down (Event Log service stopped); 1 more matching event(s) within the window
+S11c,Computer started again after the restart,EventLog,SYSTEM_START,,,,not checked: no valid time_ist in the answer key (format 2026-10-23 10:31:22)
+S11d,Final shut down from the Start menu,EventLog,SYSTEM_SHUTDOWN,Yes,2026-11-01 14:17:52,-8,matched: Windows shut down (Event Log service stopped); 1 more matching event(s) within the window

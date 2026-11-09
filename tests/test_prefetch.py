@@ -17,8 +17,22 @@ class PrefetchParserTest(unittest.TestCase):
                 f.write(b"this is not a prefetch file")
             self.assertEqual(prefetch.parse(d), [])
 
-    # TODO (Day 3+): once you have real .pf files from Member 1's export, add a
-    # test that parses one and checks the event_type, run_count and UTC time.
+    def test_empty_file_is_skipped_with_clear_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "Prefetch"))
+            open(os.path.join(d, "Prefetch", "EMPTY.EXE-00000000.pf"), "wb").close()
+            with self.assertLogs("parsers.prefetch", level="WARNING") as cm:
+                self.assertEqual(prefetch.parse(d), [])
+            self.assertIn("empty (0 bytes)", cm.output[0])
+            self.assertIn("Prefetch/EMPTY.EXE-00000000.pf", cm.output[0])
+
+    def test_uppercase_pf_extension_is_found(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "Prefetch"))
+            open(os.path.join(d, "Prefetch", "ABC~1.PF"), "wb").close()
+            with self.assertLogs("parsers.prefetch", level="WARNING") as cm:
+                prefetch.parse(d)
+            self.assertIn("ABC~1.PF", cm.output[0])
 
 
 if __name__ == "__main__":

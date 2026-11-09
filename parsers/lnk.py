@@ -13,8 +13,14 @@ inside the shortcut, with two exceptions found on the real evidence:
     up as exactly midnight local time. When that happens the target's
     modified time is used instead (time_meaning says which one was used).
 All three target times are also kept in details for checking against LECmd.
-If the team prefers the .lnk file's own modified time (not stored inside the
-file, so it needs the original file timestamps), only _pick_time() changes.
+
+REMOVABLE DRIVES (integration fix, found when validating against the answer
+key): the times inside a shortcut describe the TARGET FILE, not the moment it
+was opened. On a USB stick that is wrong by minutes or days (e.g. the time the
+file was last saved on the stick). Windows writes/updates the shortcut file in
+Recent at the moment of opening, so for removable-drive shortcuts the .lnk
+file's own modified time is used (time_meaning "shortcut_file_modified"). It
+needs the original file timestamps kept at export (FTK Export Files keeps them).
 """
 import logging
 import ntpath
@@ -106,6 +112,15 @@ def _pick_time(header):
     return None, ""
 
 
+def _shortcut_mtime(path):
+    """The .lnk file's own last-modified time (UTC), or None if unusable."""
+    try:
+        dt = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
+    return dt if _usable(dt) else None
+
+
 def _iso_or_blank(value):
     dt = _to_dt(value)
     return to_iso(dt) if _usable(dt) else ""
@@ -133,13 +148,21 @@ def _parse_one(path, evidence_dir):
 
     header = info.get("header", {}) if isinstance(info, dict) else {}
     dt, time_meaning = _pick_time(header)
+    time_meaning = "target_" + time_meaning if time_meaning else ""
+
+    drive_type = str(_find(info, "drive_type") or "")
+    removable = "REMOVABLE" in drive_type.upper()
+    lnk_mtime = _shortcut_mtime(path)
+    # Removable drive and no precise 'accessed' time inside the shortcut:
+    # the shortcut file's own time is the real moment of opening.
+    if removable and lnk_mtime is not None and time_meaning != "target_accessed_time":
+        dt, time_meaning = lnk_mtime, "shortcut_file_modified"
+
     if dt is None:
         log.warning("LNK: no usable timestamp in %s (blank or 1980/1601 placeholder dates); skipped", path)
         return []
 
     target = _target_path(info)
-    drive_type = str(_find(info, "drive_type") or "")
-    removable = "REMOVABLE" in drive_type.upper()
     size = header.get("file_size")
     # ntpath: target paths are Windows paths (backslashes) whatever OS we run on
     name = ntpath.basename(target) if target else ""
@@ -155,7 +178,7 @@ def _parse_one(path, evidence_dir):
     return [
         Event(
             timestamp_utc=to_iso(dt),
-            time_meaning="target_" + time_meaning,
+            time_meaning=time_meaning,
             source=SOURCE,
             event_type="FILE_OPENED",
             user="",
@@ -173,6 +196,7 @@ def _parse_one(path, evidence_dir):
                     _usable(_to_dt(header.get("accessed_time")))
                     and _is_date_only(_to_dt(header.get("accessed_time")))
                 ),
+                "shortcut_file_modified": to_iso(lnk_mtime) if lnk_mtime else "",
                 "lnk_file": os.path.basename(path),
             },
             evidence_file=_rel(evidence_dir, path),
