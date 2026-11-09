@@ -43,7 +43,10 @@ SEVERITY_ORDER = {"High": 0, "Medium": 1, "Low": 2}
 
 _DRIVE_RE = re.compile(r"\b[D-Zd-z]:(\\|\s|$)")          # D: ... Z:  (C: is the system drive)
 _RISKY_PATH_RE = re.compile(r"\b(downloads|temp)\b", re.IGNORECASE)
-_PROGRAM_NAME_RE = re.compile(r"[\w\-.]+\.(?:exe|msi|bat|cmd|ps1|scr|jar|vbs)", re.IGNORECASE)
+# Browsers name a repeat download "name (1).exe", so allow an optional " (n)" before the extension.
+_PROGRAM_NAME_RE = re.compile(r"[\w\-.]+(?: \(\d+\))?\.(?:exe|msi|bat|cmd|ps1|scr|jar|vbs)", re.IGNORECASE)
+# Windows' own background updaters run from Temp folders: not interesting for R4.
+_KNOWN_BENIGN = ("microsoftedgeupdate.exe", "googleupdate.exe", "onedrivesetup.exe")
 
 
 @dataclass
@@ -80,10 +83,14 @@ def _text(ev: Event) -> str:
 
 def _is_removable(ev: Event) -> bool:
     """True if the event is about a removable (USB) drive."""
-    drive_type = str((ev.details or {}).get("drive_type", "")).strip().lower()
-    if drive_type:
-        return drive_type == "removable"          # the parser knows: trust it
-    return "(removable)" in ev.summary.lower() or bool(_DRIVE_RE.search(ev.summary))
+    details = ev.details or {}
+    if "removable" in details:                    # LNK parser: explicit True / False
+        return bool(details["removable"])
+    drive_type = str(details.get("drive_type", "")).strip().lower()
+    if drive_type:                                # e.g. "DRIVE_REMOVABLE" or "removable"
+        return "removable" in drive_type
+    return "(removable)" in ev.summary.lower() or "[removable drive]" in ev.summary.lower() \
+        or bool(_DRIVE_RE.search(ev.summary))
 
 
 def _sorted(events: Iterable[Event]) -> List[Event]:
@@ -155,6 +162,8 @@ def r3_download_then_run(events: List[Event]) -> List[Finding]:
 def r4_risky_location(events: List[Event]) -> List[Finding]:
     out: List[Finding] = []
     for run in (e for e in events if e.event_type == "PROGRAM_EXECUTED"):
+        if any(name in run.summary.lower() for name in _KNOWN_BENIGN):
+            continue
         if _RISKY_PATH_RE.search(_text(run)) or _is_removable(run):
             out.append(Finding("R4", "Run from risky location", "Low", run.user,
                                "A program was run from a Downloads, Temp or removable-drive location: %s" % run.summary,
