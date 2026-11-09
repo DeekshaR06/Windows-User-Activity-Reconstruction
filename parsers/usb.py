@@ -4,6 +4,20 @@ Reads exported Registry/SYSTEM, Registry/SOFTWARE, and Registry/setupapi.dev.log
 Registry enumeration proves a device was recorded by Windows; its key LastWrite
 time is NOT necessarily the exact plug-in time. setupapi.dev.log section-start
 times are installation/configuration times, not guaranteed connection times.
+
+Integration fix (found when validating against the answer key): Windows 8+ also
+stores the LAST ARRIVAL (property 0066) and LAST REMOVAL (property 0067) of each
+USB storage device as exact times under
+  Enum\\USBSTOR\\<device>\\<serial>\\Properties\\{83da6326-97a6-4088-9453-a1923f573b29}
+These give USB_CONNECTED / USB_REMOVED at the real plug-in / unplug time. Only the
+LAST arrival and removal are kept by Windows (earlier ones are overwritten), and a
+later re-attach (e.g. VirtualBox re-attaching the stick at boot) overwrites them.
+
+So a second source is read too: Logs/Microsoft-Windows-Partition%4Diagnostic.evtx.
+Event 1006 is written for a USB disk (BusType 7) when it is connected (Capacity > 0,
+MBR present) and when it is removed (Capacity 0). A Capacity-0 record counts as a
+REMOVAL only if the same device was seen connected just before; otherwise it is the
+boot-time re-attach record and is ignored.
 """
 from __future__ import annotations
 import logging
@@ -17,17 +31,19 @@ from core import timeutil
 log = logging.getLogger(__name__)
 SOURCE = "USB"
 FOLDER = "Registry"
+PROP_GUID = "{83da6326-97a6-4088-9453-a1923f573b29}"
 USB_ID = re.compile(r"USB\\VID_([0-9A-F]{4})&PID_([0-9A-F]{4})(?:\\([^\\]+))?", re.I)
 
 
-def _event(timestamp, meaning: str, summary: str, details: Dict, evidence_file: str) -> Optional[Event]:
+def _event(timestamp, meaning: str, summary: str, details: Dict, evidence_file: str,
+           event_type: str = "USB_CONNECTED") -> Optional[Event]:
     if timestamp is not None and getattr(timestamp, "tzinfo", None) is None:
         timestamp = timestamp.replace(tzinfo=timeutil.UTC)
     iso = timeutil.to_iso(timestamp)
     if not iso:
         return None
     return Event(timestamp_utc=iso, time_meaning=meaning, source=SOURCE,
-                 event_type="USB_CONNECTED", user="", summary=summary,
+                 event_type=event_type, user="", summary=summary,
                  details=details, evidence_file=evidence_file)
 
 
@@ -137,6 +153,19 @@ def _parse_setupapi(path: str, evidence_dir: str) -> List[Event]:
     return events
 
 
+def _read_property_time(instance, code: str):
+    """Last arrival ('0066') or last removal ('0067') of a device, as a UTC datetime or None."""
+    try:
+        sub = instance.subkey("Properties").subkey(PROP_GUID).subkey(code)
+        for val in sub.values():
+            raw = val.raw_data()
+            if raw and len(raw) >= 8:
+                return timeutil.filetime_to_utc(int.from_bytes(raw[:8], "little"))
+    except Exception:
+        return None
+    return None
+
+
 def _get_mounted_devices(reg) -> Dict[str, str]:
     """Map device signature / serial to drive letter from SYSTEM MountedDevices."""
     drive_map: Dict[str, str] = {}
@@ -238,6 +267,29 @@ def _parse_system_hive(path: str, evidence_dir: str) -> List[Event]:
                             ev = _event(lastwrite, "registry_key_last_write", summary, details, relpath)
                             if ev:
                                 events.append(ev)
+
+                            if branch_name == "USBSTOR":  # storage devices only (not mouse/tablet)
+                                drive = f" [Drive {details['drive_letter']}]" if "drive_letter" in details else ""
+                                for code, etype, meaning, label in (
+                                    ("0066", "USB_CONNECTED", "registry_last_arrival", "connected (last arrival)"),
+                                    ("0067", "USB_REMOVED", "registry_last_removal", "removed (last removal)"),
+                                ):
+                                    when = _read_property_time(instance, code)
+                                    if when is None:
+                                        continue
+                                    pkey = (vidpid, serial, code, str(when))
+                                    if pkey in seen:
+                                        continue
+                                    seen.add(pkey)
+                                    pdetails = dict(details)
+                                    pdetails["timestamp_caveat"] = (
+                                        "Windows keeps only the LAST arrival and LAST removal of each device; "
+                                        "earlier plug-ins are overwritten.")
+                                    pev = _event(when, meaning,
+                                                 f"USB device {label}: {friendly} ({serial}){drive}",
+                                                 pdetails, relpath, etype)
+                                    if pev:
+                                        events.append(pev)
                         except Exception as exc:
                             log.warning("USB: failed reading a device instance under %s: %s", branch_name, exc)
     except Exception as exc:
@@ -283,13 +335,98 @@ def _parse_software_hive(path: str, evidence_dir: str) -> List[Event]:
     return events
 
 
+PARTITION_LOG_WORDS = ("partition", "diagnostic")
+USB_BUS_TYPE = "7"
+
+
+def _read_partition_records(path: str) -> List[Dict]:
+    """Event 1006 records of USB disks from the Partition/Diagnostic log (any order)."""
+    from datetime import datetime
+    from Evtx.Evtx import Evtx
+
+    records: List[Dict] = []
+    with Evtx(path) as log:
+        for rec in log.records():
+            try:
+                xml = rec.xml()
+            except Exception:
+                continue
+            if not re.search(r"<EventID[^>]*>1006</EventID>", xml):
+                continue
+            data = {k: v.strip() for k, v in re.findall(r'<Data Name="([^"]+)">([^<]*)', xml)}
+            if data.get("BusType", "") != USB_BUS_TYPE:
+                continue
+            m = re.search(r'SystemTime="([^"]+)"', xml)
+            if not m:
+                continue
+            try:
+                when = datetime.fromisoformat(m.group(1).replace("Z", "")[:26]).replace(tzinfo=timeutil.UTC)
+            except ValueError:
+                continue
+            try:
+                capacity = int(data.get("Capacity", "0") or 0)
+            except ValueError:
+                capacity = 0
+            records.append({
+                "time": when, "capacity": capacity,
+                "vendor": data.get("Manufacturer", ""), "model": data.get("Model", ""),
+                "serial": data.get("SerialNumber", ""), "disk_number": data.get("DiskNumber", ""),
+                "parent_id": data.get("ParentId", "").replace("&amp;", "&"),
+            })
+    return records
+
+
+def _partition_usb_events(records: List[Dict], relpath: str) -> List[Event]:
+    """Turn Partition/Diagnostic records into USB_CONNECTED / USB_REMOVED events."""
+    events: List[Event] = []
+    connected: Dict[str, bool] = {}
+    for r in sorted(records, key=lambda r: r["time"]):
+        key = r["serial"] or r["model"]
+        name = f"{r['vendor']} {r['model']}".strip() or "USB disk"
+        if r["capacity"] > 0:
+            etype, meaning, verb = "USB_CONNECTED", "partition_diagnostic_connected", "connected"
+            connected[key] = True
+        elif connected.get(key):
+            etype, meaning, verb = "USB_REMOVED", "partition_diagnostic_removed", "removed"
+            connected[key] = False
+        else:
+            continue  # capacity 0 with no earlier connect: boot-time re-attach record
+        summary = f"USB disk {verb}: {name} (serial {key})"
+        if r["capacity"] > 0:
+            summary += f", {r['capacity'] / 1e9:.1f} GB"
+        details = {
+            "device": name, "serial": r["serial"], "disk_number": r["disk_number"],
+            "capacity_bytes": r["capacity"], "parent_id": r["parent_id"],
+            "event_id": 1006,
+            "timestamp_caveat": ("Partition/Diagnostic event 1006: written when a disk is connected "
+                                 "(capacity known) and when it is removed (capacity 0)."),
+        }
+        ev = _event(r["time"], meaning, summary, details, relpath, etype)
+        if ev:
+            events.append(ev)
+    return events
+
+
+def _parse_partition_log(path: str, evidence_dir: str) -> List[Event]:
+    try:
+        import Evtx.Evtx  # noqa: F401
+    except ImportError:
+        log.warning("USB: python-evtx is not installed; skipping Partition/Diagnostic log")
+        return []
+    relpath = os.path.relpath(path, evidence_dir).replace("\\", "/")
+    try:
+        return _partition_usb_events(_read_partition_records(path), relpath)
+    except Exception as exc:  # noqa: BLE001 - never crash on a bad log
+        log.warning("USB: could not read %s: %s", path, exc)
+        return []
+
+
 def parse(evidence_dir: str) -> List[Event]:
     folder = os.path.join(evidence_dir, FOLDER)
+    events: List[Event] = []
     if not os.path.isdir(folder):
         log.warning("%s: folder not found: %s", SOURCE, folder)
-        return []
-    events: List[Event] = []
-    for name in os.listdir(folder):
+    for name in (os.listdir(folder) if os.path.isdir(folder) else []):
         path = os.path.join(folder, name)
         if not os.path.isfile(path):
             continue
@@ -300,4 +437,10 @@ def parse(evidence_dir: str) -> List[Event]:
             events.extend(_parse_software_hive(path, evidence_dir))
         elif name.lower() == "setupapi.dev.log":
             events.extend(_parse_setupapi(path, evidence_dir))
+    logs = os.path.join(evidence_dir, "Logs")
+    if os.path.isdir(logs):
+        for name in os.listdir(logs):
+            low = name.lower()
+            if low.endswith(".evtx") and all(w in low for w in PARTITION_LOG_WORDS):
+                events.extend(_parse_partition_log(os.path.join(logs, name), evidence_dir))
     return sorted(events, key=lambda event: event.timestamp_utc)
